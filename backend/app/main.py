@@ -11,7 +11,7 @@ from backend.app.database import engine, Base
 from backend.app.api import positions
 from backend.app.api.resumes import router as resumes_router
 from backend.app.api.match import router as match_router
-
+from backend.app.api.interview import router as interview_router
 
 
 @asynccontextmanager
@@ -34,6 +34,7 @@ app.include_router(resumes_router, prefix="/api/hr/resumes", tags=["resumes"])
 app.include_router(positions.router, prefix="/api/hr/positions", tags=["positions"])
 app.include_router(match_router, prefix="/api/hr", tags=["match"])
 
+app.include_router(interview_router, prefix="/api/interview", tags=["interview"])
 @app.get("/")
 def root():
     return {"message": "Smart-HR API is running"}

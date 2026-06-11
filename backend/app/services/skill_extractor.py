@@ -47,7 +47,7 @@ def _extract_with_llm(content: str, already_found: list[str]) -> list[str]:
 只返回技能名称，用逗号分隔，不要多余内容。
 
 简历内容：
-{content[:3000]}
+{content}
 
 补充技能："""
 
