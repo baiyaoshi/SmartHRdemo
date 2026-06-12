@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from backend.app.database import get_db, Resume, Position, MatchRecord
-from backend.app.schemas import MatchRequest
+from backend.app.schemas import MatchRequest, BatchMatchRequest
 from backend.app.services.skill_extractor import extract_skills, normalize_skills
 from backend.app.services.hybrid_match import hybrid_match
 
@@ -121,4 +121,62 @@ def get_match_record(record_id: int, db: Session = Depends(get_db)):
         "match_grade": record.match_grade,
         "recommend_level": record.recommend_level,
         "created_at": record.created_at.isoformat() if record.created_at else None,
+    }
+
+@router.post("/batch-match", status_code=200)
+def batch_match(req: BatchMatchRequest, db: Session = Depends(get_db)):
+    """简历匹配所有未删除岗位"""
+    resume = db.query(Resume).filter(Resume.id == req.resume_id).first()
+    if not resume:
+        raise HTTPException(404, "简历不存在")
+
+    if not resume.extracted_skills:
+        skills = extract_skills(resume.content or "")
+        resume.extracted_skills = normalize_skills(skills)
+        db.commit()
+
+    positions = db.query(Position).filter(Position.deleted == False).all()
+    results = []
+
+    for pos in positions:
+        result = hybrid_match(
+            resume_text=resume.content or "",
+            resume_skills=resume.extracted_skills or [],
+            position_title=pos.title or "",
+            position_skills=pos.skills or [],
+            position_requirements=(pos.requirements or "") + "\n" + (pos.responsibilities or ""),
+        )
+
+        record = MatchRecord(
+            resume_id=req.resume_id,
+            position_id=pos.id,
+            final_score=result["final_score"],
+            graph_score=result["graph_score"],
+            llm_score=result["llm_score"],
+            matched_skills=result["matched_skills"],
+            missing_skills=result["missing_skills"],
+            extra_skills=result["extra_skills"],
+            llm_report=result["llm_report"],
+            match_grade=result["match_grade"],
+            recommend_level=result["recommend_level"],
+        )
+        db.add(record)
+
+        results.append({
+            "position_id": pos.id,
+            "position_title": pos.title,
+            "company": pos.company,
+            "salary_range": pos.salary_range,
+            **result,
+        })
+
+    db.commit()
+    results.sort(key=lambda x: x["final_score"], reverse=True)
+
+    return {
+        "resume_id": req.resume_id,
+        "file_name": resume.file_name,
+        "skills": resume.extracted_skills or [],
+        "total_positions": len(positions),
+        "results": results,
     }

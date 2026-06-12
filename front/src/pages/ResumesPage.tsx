@@ -24,6 +24,7 @@ interface MatchResult {
   recommend_level: number
   matched_skills: string[]
   missing_skills: string[]
+  llm_report: string
 }
 
 interface MatchResponse {
@@ -34,25 +35,15 @@ interface MatchResponse {
   results: MatchResult[]
 }
 
-interface Position {
-  id: number
-  title: string
-  company: string
-  salary_range: string
-}
+
 
 export default function ResumesPage({ onBack }: { onBack: () => void }) {
   const [resumes, setResumes] = useState<Resume[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [matchResult, setMatchResult] = useState<MatchResponse | null>(null)
-  const [positions, setPositions] = useState<Position[]>([])
-
-  // 单个匹配弹窗
-  const [matchModal, setMatchModal] = useState<{ resumeId: number; fileName: string } | null>(null)
-  const [selectedPosId, setSelectedPosId] = useState<number | ''>('')
-  const [singleMatching, setSingleMatching] = useState(false)
-  const [singleResult, setSingleResult] = useState<any>(null)
+  const [matchingResumeId, setMatchingResumeId] = useState<number | null>(null)
+  const [expandedReport, setExpandedReport] = useState<number | null>(null)
 
   const loadResumes = () => {
     fetch(`${API}?page=0&size=50`)
@@ -102,33 +93,21 @@ export default function ResumesPage({ onBack }: { onBack: () => void }) {
     e.target.value = ''
   }
 
-  // 打开匹配弹窗
-  const openMatchModal = async (resumeId: number, fileName: string) => {
-    setMatchModal({ resumeId, fileName })
-    setSelectedPosId('')
-    setSingleResult(null)
-    // 加载岗位列表
-    const r = await fetch(`${POS_API}/all`)
-    const d = await r.json()
-    setPositions(Array.isArray(d) ? d : [])
-  }
-
-  // 执行单个匹配
-  const handleSingleMatch = async () => {
-    if (!matchModal || !selectedPosId) return
-    setSingleMatching(true)
-    setSingleResult(null)
+  // 匹配简历与所有岗位（调后端批量接口）
+  const handleMatchResume = async (resumeId: number) => {
+    setMatchingResumeId(resumeId)
+    setMatchResult(null)
     try {
-      const r = await fetch(`${MATCH_API}/match`, {
+      const r = await fetch(`/api/hr/batch-match`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resume_id: matchModal.resumeId, position_id: selectedPosId }),
+        body: JSON.stringify({ resume_id: resumeId }),
       })
       if (r.ok) {
-        setSingleResult(await r.json())
+        setMatchResult(await r.json())
       }
     } catch { }
-    setSingleMatching(false)
+    setMatchingResumeId(null)
   }
 
   const getGradeColor = (g: string) => {
@@ -196,35 +175,49 @@ export default function ResumesPage({ onBack }: { onBack: () => void }) {
             </div>
             <div style={{ display: 'grid', gap: 12 }}>
               {matchResult.results?.map(r => (
-                <div key={r.position_id} style={{
-                  display: 'flex', alignItems: 'center', gap: 16,
-                  padding: '12px 16px', borderRadius: 10,
-                  border: '1px solid #e8e8e8',
-                }}>
-                  <div style={{ textAlign: 'center', minWidth: 60 }}>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: getGradeColor(r.match_grade) }}>{r.final_score}</div>
-                    <div style={{
-                      fontSize: 11, fontWeight: 600, marginTop: 2,
-                      color: '#fff', background: getGradeColor(r.match_grade),
-                      borderRadius: 8, padding: '0 8px', display: 'inline-block',
-                    }}>{r.match_grade}</div>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>{r.position_title}</div>
-                    <div style={{ fontSize: 12, color: '#999' }}>{r.company} | {r.salary_range}</div>
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-                      {r.matched_skills?.slice(0, 5).map(s => (
-                        <span key={s} style={{ fontSize: 11, background: '#f6ffed', color: '#52c41a', padding: '1px 8px', borderRadius: 8 }}>{s}</span>
-                      ))}
-                      {r.missing_skills?.slice(0, 3).map(s => (
-                        <span key={s} style={{ fontSize: 11, background: '#fff2f0', color: '#ff4d4f', padding: '1px 8px', borderRadius: 8 }}>缺{s}</span>
-                      ))}
+                <div key={r.position_id}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 16,
+                    padding: '12px 16px', borderRadius: 10,
+                    border: '1px solid #e8e8e8', cursor: 'pointer',
+                  }} onClick={() => setExpandedReport(expandedReport === r.position_id ? null : r.position_id)}>
+                    <div style={{ textAlign: 'center', minWidth: 60 }}>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: getGradeColor(r.match_grade) }}>{r.final_score}</div>
+                      <div style={{
+                        fontSize: 11, fontWeight: 600, marginTop: 2,
+                        color: '#fff', background: getGradeColor(r.match_grade),
+                        borderRadius: 8, padding: '0 8px', display: 'inline-block',
+                      }}>{r.match_grade}</div>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>{r.position_title}</div>
+                      <div style={{ fontSize: 12, color: '#999' }}>{r.company} | {r.salary_range}</div>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                        {r.matched_skills?.slice(0, 5).map(s => (
+                          <span key={s} style={{ fontSize: 11, background: '#f6ffed', color: '#52c41a', padding: '1px 8px', borderRadius: 8 }}>{s}</span>
+                        ))}
+                        {r.missing_skills?.slice(0, 3).map(s => (
+                          <span key={s} style={{ fontSize: 11, background: '#fff2f0', color: '#ff4d4f', padding: '1px 8px', borderRadius: 8 }}>缺{s}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#999', textAlign: 'right', minWidth: 60 }}>
+                      <div>图谱 {r.graph_score}</div>
+                      <div>AI {r.llm_score}</div>
+                    </div>
+                    <div style={{ fontSize: 20, color: '#ccc', marginLeft: 4 }}>
+                      {expandedReport === r.position_id ? '▲' : '▼'}
                     </div>
                   </div>
-                  <div style={{ fontSize: 12, color: '#999', textAlign: 'right', minWidth: 60 }}>
-                    <div>图谱 {r.graph_score}</div>
-                    <div>AI {r.llm_score}</div>
-                  </div>
+                  {expandedReport === r.position_id && r.llm_report && (
+                    <div style={{
+                      marginTop: -1, padding: '16px 20px', borderRadius: '0 0 10px 10px',
+                      border: '1px solid #e8e8e8', borderTop: 'none', background: '#fafafa',
+                      fontSize: 13, color: '#555', lineHeight: 1.8, whiteSpace: 'pre-wrap',
+                    }}>
+                      {r.llm_report}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -253,10 +246,11 @@ export default function ResumesPage({ onBack }: { onBack: () => void }) {
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => openMatchModal(r.id, r.file_name)} style={{
+                    <button onClick={() => handleMatchResume(r.id)} disabled={matchingResumeId === r.id} style={{
                       background: '#f26b38', color: '#fff', border: 'none',
-                      padding: '4px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                    }}>🎯 匹配</button>
+                      padding: '4px 14px', borderRadius: 6, cursor: matchingResumeId === r.id ? 'not-allowed' : 'pointer',
+                      fontSize: 12, fontWeight: 600, opacity: matchingResumeId === r.id ? 0.6 : 1,
+                    }}>{matchingResumeId === r.id ? '匹配中...' : '🎯 匹配全部'}</button>
                     <button onClick={async () => {
                       if (!confirm('确认删除？')) return
                       await fetch(`${API}/${r.id}`, { method: 'DELETE' })
@@ -284,107 +278,7 @@ export default function ResumesPage({ onBack }: { onBack: () => void }) {
         )}
       </div>
 
-      {/* 匹配弹窗 */}
-      {matchModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000,
-        }} onClick={() => setMatchModal(null)}>
-          <div style={{
-            background: '#fff', borderRadius: 12, padding: 24, width: 560,
-            maxHeight: '80vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 16, color: '#1a1a2e' }}>🎯 匹配岗位 — {matchModal.fileName}</h3>
-              <button onClick={() => setMatchModal(null)} style={{
-                background: 'transparent', border: 'none', fontSize: 20, cursor: 'pointer', color: '#999'
-              }}>✕</button>
-            </div>
 
-            {/* 选择岗位 */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 13, color: '#666', marginBottom: 6, display: 'block' }}>选择岗位</label>
-              <select value={selectedPosId} onChange={e => setSelectedPosId(Number(e.target.value) || '')}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d9d9d9', fontSize: 14 }}>
-                <option value="">请选择岗位</option>
-                {positions.map(p => <option key={p.id} value={p.id}>{p.title} - {p.company} ({p.salary_range})</option>)}
-              </select>
-            </div>
-
-            <button onClick={handleSingleMatch} disabled={singleMatching || !selectedPosId} style={{
-              width: '100%', background: '#f26b38', color: '#fff', border: 'none',
-              padding: '10px', borderRadius: 8, fontSize: 15, fontWeight: 600,
-              cursor: singleMatching ? 'not-allowed' : 'pointer', opacity: singleMatching || !selectedPosId ? 0.6 : 1,
-              marginBottom: 16,
-            }}>{singleMatching ? '匹配中...' : '开始匹配'}</button>
-
-            {/* 匹配结果 */}
-            {singleResult && (
-              <div>
-                <div style={{ textAlign: 'center', marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, color: '#999', marginBottom: 4 }}>综合匹配度</div>
-                  <div style={{
-                    width: 80, height: 80, borderRadius: '50%', margin: '0 auto',
-                    background: `conic-gradient(${getGradeColor(singleResult.match_grade)} ${singleResult.final_score}%, #f0f0f0 0)`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 22, fontWeight: 700, color: '#1a1a2e',
-                  }}>{singleResult.final_score}</div>
-                  <div style={{ marginTop: 4 }}>
-                    <span style={{
-                      background: `${getGradeColor(singleResult.match_grade)}20`,
-                      color: getGradeColor(singleResult.match_grade),
-                      padding: '2px 12px', borderRadius: 12, fontSize: 13, fontWeight: 600,
-                    }}>等级 {singleResult.match_grade}</span>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                  <div style={{ textAlign: 'center', padding: 10, background: '#fafafa', borderRadius: 8 }}>
-                    <div style={{ fontSize: 12, color: '#999' }}>图谱匹配</div>
-                    <div style={{ fontSize: 18, fontWeight: 600, color: '#1a1a2e' }}>{singleResult.graph_score}</div>
-                  </div>
-                  <div style={{ textAlign: 'center', padding: 10, background: '#fafafa', borderRadius: 8 }}>
-                    <div style={{ fontSize: 12, color: '#999' }}>AI 评估</div>
-                    <div style={{ fontSize: 18, fontWeight: 600, color: '#1a1a2e' }}>{singleResult.llm_score}</div>
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: '#1a1a2e' }}>技能详情</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {singleResult.matched_skills?.length > 0 && (
-                      <div>
-                        <span style={{ fontSize: 12, color: '#52c41a' }}>✅ 已匹配 ({singleResult.matched_skills.length}) </span>
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-                          {singleResult.matched_skills.map((s: string) => <span key={s} style={{ background: '#f6ffed', color: '#52c41a', padding: '1px 8px', borderRadius: 8, fontSize: 11 }}>{s}</span>)}
-                        </div>
-                      </div>
-                    )}
-                    {singleResult.missing_skills?.length > 0 && (
-                      <div>
-                        <span style={{ fontSize: 12, color: '#ff4d4f' }}>❌ 缺失 ({singleResult.missing_skills.length}) </span>
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-                          {singleResult.missing_skills.map((s: string) => <span key={s} style={{ background: '#fff2f0', color: '#ff4d4f', padding: '1px 8px', borderRadius: 8, fontSize: 11 }}>{s}</span>)}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {singleResult.llm_report && (
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, color: '#1a1a2e' }}>AI 分析</div>
-                    <div style={{ fontSize: 12, color: '#666', lineHeight: 1.6, whiteSpace: 'pre-wrap', background: '#fafafa', padding: 12, borderRadius: 8 }}>
-                      {singleResult.llm_report}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

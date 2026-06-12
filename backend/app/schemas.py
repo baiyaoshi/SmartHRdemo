@@ -79,6 +79,10 @@ class MatchRequest(BaseModel):
     position_id: int
 
 
+class BatchMatchRequest(BaseModel):
+    resume_id: int
+
+
 # ===== 面试题 =====
 class GenerateQuestionsRequest(BaseModel):
     position_id: Optional[int] = None

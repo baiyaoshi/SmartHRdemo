@@ -25,12 +25,17 @@ def hybrid_match(resume_text, resume_skills, position_title, position_skills, po
     )
     graph_score = graph_result["score"]
 
-    llm_result = _llm_evaluate(
-        resume_text, resume_skills, position_title, position_skills,
-        position_requirements, graph_result,
-    )
-    llm_score = llm_result["score"]
-    llm_report = llm_result["report"]
+    if graph_score >= 60:
+        llm_result = _llm_evaluate(
+            resume_text, resume_skills, position_title, position_skills,
+            position_requirements, graph_result,
+        )
+        llm_score = llm_result["score"]
+        llm_report = llm_result["report"]
+    else:
+        llm_score = graph_score
+        llm_report = "图谱匹配度较低，未进行 LLM 评估，最终得分以图谱评分为主"
+
 
     final_score = round(graph_score * GRAPH_WEIGHT + llm_score * LLM_WEIGHT, 1)
     grade, level = _to_grade_and_level(final_score)
