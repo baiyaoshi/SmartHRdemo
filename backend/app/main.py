@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-"""FastAPI 主入口"""
-
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -12,6 +9,7 @@ from backend.app.api import positions
 from backend.app.api.resumes import router as resumes_router
 from backend.app.api.match import router as match_router
 from backend.app.api.interview import router as interview_router
+from backend.app.api.graph import router as graph_router
 
 
 @asynccontextmanager
@@ -33,8 +31,8 @@ app.add_middleware(
 app.include_router(resumes_router, prefix="/api/hr/resumes", tags=["resumes"])
 app.include_router(positions.router, prefix="/api/hr/positions", tags=["positions"])
 app.include_router(match_router, prefix="/api/hr", tags=["match"])
-
 app.include_router(interview_router, prefix="/api/interview", tags=["interview"])
+app.include_router(graph_router, prefix="/api", tags=["graph"])
 @app.get("/")
 def root():
     return {"message": "Smart-HR API is running"}
